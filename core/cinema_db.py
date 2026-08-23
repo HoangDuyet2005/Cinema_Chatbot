@@ -110,7 +110,7 @@ def get_gio_ngay_chieu_theo_chi_nhanh(movie_name):
         connection = get_connection()
         cursor = connection.cursor()
         query = """
-        SELECT b.name, lc.start_time, lc.start_date
+        SELECT b.name, lc.start_time, lc.start_date, lc.price
         FROM schedule lc
         JOIN movie p ON lc.movie_id = p.id
         JOIN room r ON lc.room_id = r.id
@@ -125,6 +125,7 @@ def get_gio_ngay_chieu_theo_chi_nhanh(movie_name):
             branch_name = row[0]
             start_time = row[1]
             start_date = row[2]
+            price = row[3] or 0
             
             if isinstance(start_time, timedelta):
                 total_seconds = int(start_time.total_seconds())
@@ -135,7 +136,7 @@ def get_gio_ngay_chieu_theo_chi_nhanh(movie_name):
                 start_time_str = str(start_time)
                 
             start_date_str = start_date.strftime("%Y-%m-%d")
-            time_str = f"{start_time_str} ({start_date_str})"
+            time_str = f"{start_time_str} ({start_date_str}) - Giá vé: {price:,.0f}đ"
             if branch_name not in result:
                 result[branch_name] = []
             result[branch_name].append(time_str)
@@ -232,3 +233,76 @@ def LayMaSuatChieu(current_context, movie_name, ngay_chieu, gio_chieu, branch_na
     finally:
         cursor.close()
         connection.close()
+
+def get_danh_sach_bap_nuoc():
+    try:
+        connection = get_connection()
+        cursor = connection.cursor()
+        cursor.execute("SELECT name, description, price FROM food_item WHERE status = 1")
+        rows = cursor.fetchall()
+        cursor.close()
+        connection.close()
+        if not rows:
+            return "Hiện tại không có thông tin bắp nước."
+        res = "Danh sách combo bắp nước tại rạp:\n"
+        for row in rows:
+            price = row[2] or 0
+            res += f"- {row[0]}: {row[1]} - Giá: {price:,.0f}đ\n"
+        return res
+    except Exception as e:
+        print("Lỗi khi lấy bắp nước:", e)
+        return "Lỗi khi truy vấn bắp nước."
+
+def get_danh_gia_phim(movie_name):
+    try:
+        connection = get_connection()
+        cursor = connection.cursor()
+        query = """
+        SELECT AVG(mr.rating_score), COUNT(mr.id)
+        FROM movie_rating mr
+        JOIN movie p ON mr.movie_id = p.id
+        WHERE p.name LIKE %s
+        """
+        cursor.execute(query, (f"%{movie_name}%",))
+        row = cursor.fetchone()
+        cursor.close()
+        connection.close()
+        
+        if row and row[1] > 0:
+            avg_rating = float(row[0])
+            count = row[1]
+            return f"Phim {movie_name} được khán giả đánh giá trung bình {avg_rating:.1f}/5 sao (từ {count} lượt đánh giá)."
+        return f"Hiện tại chưa có đánh giá nào cho phim {movie_name}."
+    except Exception as e:
+        print("Lỗi khi lấy đánh giá phim:", e)
+        return "Không thể tra cứu đánh giá phim lúc này."
+
+def get_remaining_seats(movie_name: str, branch_name: str, date: str, time: str) -> str:
+    """Đếm số ghế trống cho một suất chiếu cụ thể."""
+    maLichChieu, maRap, maPhim, ngayChieu, maPhong, gioChieu = LayMaSuatChieu(None, movie_name, date, time, branch_name)
+    if not maLichChieu:
+        return f"Không tìm thấy suất chiếu {time} ngày {date} cho phim {movie_name} tại {branch_name}."
+    
+    try:
+        connection = get_connection()
+        cursor = connection.cursor()
+        
+        # Đếm tổng số ghế của phòng chiếu
+        cursor.execute("SELECT COUNT(id) FROM seat WHERE room_id = %s", (maPhong,))
+        total_seats = cursor.fetchone()[0] or 0
+        
+        # Đếm số ghế đã được đặt cho suất chiếu này
+        cursor.execute("SELECT COUNT(id) FROM ticket WHERE schedule_id = %s", (maLichChieu,))
+        booked_seats = cursor.fetchone()[0] or 0
+        
+        cursor.close()
+        connection.close()
+        
+        remaining = total_seats - booked_seats
+        if remaining <= 0:
+            return f"Suất chiếu {time} ngày {date} cho phim {movie_name} tại {branch_name} đã CHÁY VÉ (Hết ghế trống)."
+        
+        return f"Suất chiếu {time} ngày {date} cho phim {movie_name} tại {branch_name} hiện còn {remaining} ghế trống (Tổng: {total_seats}, Đã đặt: {booked_seats})."
+    except Exception as e:
+        print("Lỗi khi đếm ghế:", e)
+        return "Lỗi khi kiểm tra số ghế trống."

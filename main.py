@@ -2,6 +2,7 @@ import os
 import time
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import google.generativeai as genai
 from dotenv import load_dotenv
@@ -12,7 +13,10 @@ from core.cinema_db import (
     get_gio_ngay_chieu_theo_chi_nhanh,
     LayMaSuatChieu,
     get_danh_sach_rap,
-    get_thong_tin_phim_response
+    get_thong_tin_phim_response,
+    get_danh_sach_bap_nuoc,
+    get_danh_gia_phim,
+    get_remaining_seats
 )
 
 load_dotenv(override=True)
@@ -59,11 +63,11 @@ def get_movie_detail(movie_name: str) -> str:
     return f"Khong tim thay thong tin chi tiet cho phim {movie_name}."
 
 def search_showtimes(movie_name: str) -> str:
-    """Tra cuu lich chieu cua mot bo phim cu the tai cac cum rap World Cinema."""
+    """Tra cuu lich chieu va gia ve cua mot bo phim cu the tai cac cum rap World Cinema."""
     showtimes = get_gio_ngay_chieu_theo_chi_nhanh(movie_name)
     if not showtimes:
         return f"Hien tai chua co lich chieu moi cho phim {movie_name} hoac phim chua khoi chieu."
-    result = f"Lich chieu phim {movie_name} tai World Cinema:\n"
+    result = f"Lich chieu va gia ve phim {movie_name} tai World Cinema:\n"
     for branch, times in showtimes.items():
         result += f"- Chi nhanh {branch}:\n"
         for t in times:
@@ -81,21 +85,36 @@ def generate_booking_link(movie_name: str, branch_name: str, date: str, time: st
         return f"Day la link dat ghe cho phim <b>{movie_name}</b> suat <b>{time}</b> ngay <b>{date}</b> tai <b>{branch_name}</b>: <a href='http://localhost:3000/datvechitiet/{maLichChieu}/{maRap}/{maPhim}/{ngayChieu}/{maPhong}/{gioChieu}' target='_blank' style='color:#f26b38;font-weight:bold;'>Đặt vé tại đây</a>"
     return f"Xin loi, suat chieu luc {time} ngay {date} cho phim {movie_name} tai rap {branch_name} da het han hoac khong hop le."
 
+def get_food_items() -> str:
+    """Trả về danh sách các combo bắp rang bơ và nước ngọt đang bán tại rạp. Dùng khi khách hỏi đồ ăn, thức uống, bắp rang bơ, popcorn, combo, ăn uống."""
+    return get_danh_sach_bap_nuoc()
+
+def search_movie_rating(movie_name: str) -> str:
+    """Trả về đánh giá trung bình của một bộ phim. Dùng khi khách hỏi phim này có hay không, phim được mấy sao, review phim."""
+    return get_danh_gia_phim(movie_name)
+
+def check_remaining_seats(movie_name: str, branch_name: str, date: str, time: str) -> str:
+    """Kiểm tra số ghế trống (còn bao nhiêu chỗ) của một suất chiếu cụ thể. Bắt buộc phải có tên phim, tên rạp, ngày chiếu và giờ chiếu."""
+    return get_remaining_seats(movie_name, branch_name, date, time)
+
 # Cau hinh model Gemini
-model_name = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+model_name = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
 model = genai.GenerativeModel(
     model_name=model_name,
-    tools=[get_movies, get_upcoming_movies, get_movie_detail, search_showtimes, get_cinemas, generate_booking_link],
+    tools=[get_movies, get_upcoming_movies, get_movie_detail, search_showtimes, get_cinemas, generate_booking_link, get_food_items, search_movie_rating, check_remaining_seats],
     system_instruction=(
-        "Ban la tro ly ao AI ho tro He thong Rap chieu phim World Cinema. "
-        "CHI THUC HIEN TRA LOI BANG TIENG VIET. "
-        "Dinh dang cau tra loi bang HTML de hien thi tren web (su dung the <br>, <b>, <i>, <ul>, <li>, <a href>). "
-        "Luon dung cac cong cu (tools) de lay thong tin chinh xac tu he thong World Cinema, khong tu bia ra thong tin phim va lich chieu. "
-        "Cac chi nhanh World Cinema gom co: World Cinema Ha Dong, World Cinema Thu Duc, World Cinema Ba Dinh, World Cinema Pham Hung. "
-        "Khi khach hoi ve phim sap chieu, goi cong cu get_upcoming_movies de liet ke cac phim sap ra mat kem ngay khoi chieu. "
-        "Khi khach hoi ve phim dang chieu, goi cong cu get_movies. "
-        "Khi khach hoi ve lich chieu, neu chua ro chi nhanh thi hoi khach muon xem o chi nhanh nao. "
-        "Neu khach da chon suat chieu va rap, luon goi cong cu generate_booking_link de cung cap duong link dat ve cho khach hang."
+        "Bạn là trợ lý ảo AI hỗ trợ Hệ thống Rạp chiếu phim World Cinema. "
+        "CHỈ THỰC HIỆN TRẢ LỜI BẰNG TIẾNG VIỆT. "
+        "Mọi thông tin về lịch chiếu, giá vé, phim, bắp nước BẮT BUỘC dùng công cụ (tools) để tra cứu dữ liệu thực tế, tuyệt đối KHÔNG tự bịa ra dữ liệu. "
+        "Đối với các câu giao tiếp thông thường (chào hỏi, cảm ơn), hãy tự trả lời thân thiện mà không gọi công cụ. "
+        "Nếu khách hỏi về một phim mà không chắc chắn, hãy dùng công cụ tìm kiếm phim trước. "
+        "Định dạng câu trả lời bằng HTML để hiển thị trên web (sử dụng thẻ <br>, <b>, <i>, <ul>, <li>, <a href>). "
+        "Các chi nhánh World Cinema gồm có: World Cinema Hà Đông, World Cinema Thủ Đức, World Cinema Ba Đình, World Cinema Phạm Hùng. "
+        "Khi khách hỏi về phim sắp chiếu, gọi công cụ get_upcoming_movies. "
+        "Khi khách hỏi về phim đang chiếu, gọi công cụ get_movies. "
+        "Khi khách hỏi về lịch chiếu hoặc giá vé, gọi search_showtimes. "
+        "Nếu khách đã chọn suất chiếu và rạp, luôn gọi công cụ generate_booking_link để lấy link đặt vé. "
+        "Khi khách hỏi về số lượng ghế trống, số chỗ còn lại, hãy gọi công cụ check_remaining_seats để kiểm tra."
     )
 )
 
@@ -107,6 +126,10 @@ class MessageRequest(BaseModel):
     user_id: int = 0
 
 def call_gemini_with_retry(chat_session, user_message, max_retries=3):
+    # Prune history to keep only last 10 turns (20 messages) to avoid Context Window bloat
+    if len(chat_session.history) > 20:
+        chat_session.history = chat_session.history[-20:]
+        
     for attempt in range(max_retries):
         try:
             response = chat_session.send_message(user_message)
@@ -118,7 +141,9 @@ def call_gemini_with_retry(chat_session, user_message, max_retries=3):
                 print(f"Rate limit hit, retry in {wait_secs}s...")
                 time.sleep(wait_secs)
             else:
-                raise e
+                print(f"Exception in call_gemini: {e}")
+                return "Xin lỗi, hiện tại hệ thống AI đang gặp lỗi (Chi tiết: " + err_str + ")"
+    return "Hệ thống AI đang quá tải, vui lòng thử lại sau."
 
 @app.post("/handle_message")
 def handle_message(req: MessageRequest):
@@ -131,17 +156,7 @@ def handle_message(req: MessageRequest):
     
     chat_session = user_sessions[user_id]
     
-    try:
-        response_text = call_gemini_with_retry(chat_session, user_message)
-    except Exception as e:
-        print(f"Error calling Gemini: {e}")
-        try:
-            user_sessions[user_id] = model.start_chat(enable_automatic_function_calling=True)
-            response_text = call_gemini_with_retry(user_sessions[user_id], user_message)
-        except Exception as e2:
-            print(f"Retry failed: {e2}")
-            response_text = "Xin lỗi, hiện tại hệ thống AI đang nhận nhiều yêu cầu. Bạn vui lòng đợi vài giây và nhắn lại giúp mình nhé!"
-        
+    response_text = call_gemini_with_retry(chat_session, user_message)
     processing_time = time.time() - start_time
     
     return {
