@@ -104,6 +104,7 @@ model = genai.GenerativeModel(
     tools=[get_movies, get_upcoming_movies, get_movie_detail, search_showtimes, get_cinemas, generate_booking_link, get_food_items, search_movie_rating, check_remaining_seats],
     system_instruction=(
         "Bạn là trợ lý ảo AI hỗ trợ Hệ thống Rạp chiếu phim World Cinema. "
+        "Tuyệt đối TỪ CHỐI trả lời bất kỳ câu hỏi nào không liên quan đến rạp chiếu phim, điện ảnh hoặc dịch vụ của World Cinema một cách lịch sự nhưng kiên quyết. "
         "CHỈ THỰC HIỆN TRẢ LỜI BẰNG TIẾNG VIỆT. "
         "Mọi thông tin về lịch chiếu, giá vé, phim, bắp nước BẮT BUỘC dùng công cụ (tools) để tra cứu dữ liệu thực tế, tuyệt đối KHÔNG tự bịa ra dữ liệu. "
         "Đối với các câu giao tiếp thông thường (chào hỏi, cảm ơn), hãy tự trả lời thân thiện mà không gọi công cụ. "
@@ -126,10 +127,6 @@ class MessageRequest(BaseModel):
     user_id: int = 0
 
 def call_gemini_with_retry(chat_session, user_message, max_retries=3):
-    # Prune history to keep only last 10 turns (20 messages) to avoid Context Window bloat
-    if len(chat_session.history) > 20:
-        chat_session.history = chat_session.history[-20:]
-        
     for attempt in range(max_retries):
         try:
             response = chat_session.send_message(user_message)
