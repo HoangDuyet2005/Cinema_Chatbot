@@ -305,4 +305,34 @@ def get_remaining_seats(movie_name: str, branch_name: str, date: str, time: str)
         return f"Suất chiếu {time} ngày {date} cho phim {movie_name} tại {branch_name} hiện còn {remaining} ghế trống (Tổng: {total_seats}, Đã đặt: {booked_seats})."
     except Exception as e:
         print("Lỗi khi đếm ghế:", e)
-        return "Lỗi khi kiểm tra số ghế trống."
+        return "Lỗi khi kiểm tra số ghế trống."
+
+def get_most_popular_movies() -> str:
+    """Trả về danh sách top 5 các bộ phim hot nhất, được đặt vé nhiều nhất hiện nay."""
+    try:
+        connection = get_connection()
+        cursor = connection.cursor()
+        query = """
+            SELECT m.name, COUNT(t.id) as ticket_count
+            FROM movie m
+            JOIN schedule s ON m.id = s.movie_id
+            JOIN ticket t ON s.id = t.schedule_id
+            GROUP BY m.id
+            ORDER BY ticket_count DESC
+            LIMIT 5
+        """
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        cursor.close()
+        connection.close()
+        
+        if not rows:
+            return "Hiện tại chưa có dữ liệu đặt vé nào trong hệ thống."
+            
+        res = "Top 5 phim được đặt vé nhiều nhất:\n"
+        for idx, row in enumerate(rows, 1):
+            res += f"{idx}. {row[0]} ({row[1]} vé)\n"
+        return res
+    except Exception as e:
+        print("Lỗi khi lấy top phim:", e)
+        return "Không thể tra cứu danh sách phim hot lúc này."
