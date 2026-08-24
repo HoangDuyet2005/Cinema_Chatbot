@@ -16,7 +16,8 @@ from core.cinema_db import (
     get_thong_tin_phim_response,
     get_danh_sach_bap_nuoc,
     get_danh_gia_phim,
-    get_remaining_seats
+    get_remaining_seats,
+    get_most_popular_movies
 )
 
 load_dotenv(override=True)
@@ -97,11 +98,15 @@ def check_remaining_seats(movie_name: str, branch_name: str, date: str, time: st
     """Kiểm tra số ghế trống (còn bao nhiêu chỗ) của một suất chiếu cụ thể. Bắt buộc phải có tên phim, tên rạp, ngày chiếu và giờ chiếu."""
     return get_remaining_seats(movie_name, branch_name, date, time)
 
+def search_popular_movies() -> str:
+    """Trả về danh sách 5 bộ phim hot nhất, được đặt vé nhiều nhất. Dùng khi khách hỏi phim nào đang hot, phim nào bán được nhiều vé nhất."""
+    return get_most_popular_movies()
+
 # Cau hinh model Gemini
 model_name = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
 model = genai.GenerativeModel(
     model_name=model_name,
-    tools=[get_movies, get_upcoming_movies, get_movie_detail, search_showtimes, get_cinemas, generate_booking_link, get_food_items, search_movie_rating, check_remaining_seats],
+    tools=[get_movies, get_upcoming_movies, get_movie_detail, search_showtimes, get_cinemas, generate_booking_link, get_food_items, search_movie_rating, check_remaining_seats, search_popular_movies],
     system_instruction=(
         "Bạn là trợ lý ảo AI hỗ trợ Hệ thống Rạp chiếu phim World Cinema. "
         "Tuyệt đối TỪ CHỐI trả lời bất kỳ câu hỏi nào không liên quan đến rạp chiếu phim, điện ảnh hoặc dịch vụ của World Cinema một cách lịch sự nhưng kiên quyết. "
@@ -115,7 +120,8 @@ model = genai.GenerativeModel(
         "Khi khách hỏi về phim đang chiếu, gọi công cụ get_movies. "
         "Khi khách hỏi về lịch chiếu hoặc giá vé, gọi search_showtimes. "
         "Nếu khách đã chọn suất chiếu và rạp, luôn gọi công cụ generate_booking_link để lấy link đặt vé. "
-        "Khi khách hỏi về số lượng ghế trống, số chỗ còn lại, hãy gọi công cụ check_remaining_seats để kiểm tra."
+        "Khi khách hỏi về số lượng ghế trống, số chỗ còn lại, hãy gọi công cụ check_remaining_seats để kiểm tra. "
+        "Khi khách hỏi phim nào đang hot, phim nào được đặt vé nhiều nhất, hãy gọi công cụ search_popular_movies."
     )
 )
 
