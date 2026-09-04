@@ -1,12 +1,10 @@
 import os
 import urllib.parse
 import mysql.connector
-import json
 from datetime import datetime, timedelta
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-import re
 from dotenv import load_dotenv
+# (Đã bỏ các import json/re/sklearn - không được dùng ở đâu trong file này. sklearn cũng không có
+# trong requirements.txt nên import không điều kiện này từng làm crash app ngay khi khởi động.)
 
 load_dotenv(override=True)
 
@@ -17,7 +15,8 @@ if DATABASE_URL:
         'host': url.hostname or 'localhost',
         'port': url.port or 3306,
         'user': url.username or 'root',
-        'password': url.password or '***REMOVED_LEAKED_PASSWORD***',
+        # Không đặt password mặc định thật trong code - bắt buộc phải cấu hình qua biến môi trường.
+        'password': url.password or '',
         'database': url.path.lstrip('/') if url.path else 'cinema2',
         'charset': 'utf8mb4'
     }
@@ -26,10 +25,16 @@ else:
         'host': os.getenv('DB_HOST', 'localhost'),
         'port': int(os.getenv('DB_PORT', '3306')),
         'user': os.getenv('DB_USER', 'root'),
-        'password': os.getenv('DB_PASSWORD', '***REMOVED_LEAKED_PASSWORD***'),
+        # Không đặt password mặc định thật trong code (trước đây hardcode mật khẩu MySQL thật ở đây,
+        # đã bị lộ công khai trên GitHub - đã đổi mật khẩu MySQL và gỡ khỏi code). Bắt buộc set
+        # DB_PASSWORD trong .env.
+        'password': os.getenv('DB_PASSWORD', ''),
         'database': os.getenv('DB_NAME', 'cinema2'),
         'charset': 'utf8mb4'
     }
+
+if not db_config['password']:
+    print("WARNING: DB_PASSWORD (hoặc DATABASE_URL) chưa được cấu hình trong .env - kết nối MySQL nhiều khả năng sẽ thất bại.")
 
 def get_connection():
     return mysql.connector.connect(**db_config)

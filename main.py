@@ -1,8 +1,8 @@
 import os
 import time
+from collections import OrderedDict
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import google.generativeai as genai
 from dotenv import load_dotenv
@@ -27,7 +27,10 @@ app = FastAPI(title="World Cinema AI Chatbot Service")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    # API này không dùng cookie/session của trình duyệt (user_id truyền thẳng trong body),
+    # nên allow_credentials phải là False để đi cùng allow_origins=["*"] - kết hợp
+    # allow_credentials=True với "*" là cấu hình CORS không hợp lệ và bị trình duyệt từ chối.
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -37,6 +40,10 @@ if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 else:
     print("WARNING: GEMINI_API_KEY is not set in .env")
+
+# URL gốc của Frontend, dùng để sinh link đặt vé trả về cho khách (generate_booking_link).
+# Đổi qua .env khi deploy production thay vì hardcode.
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 # Khai bao cac cong cu (tools) cho Gemini
 def get_movies() -> str:
@@ -83,7 +90,9 @@ def generate_booking_link(movie_name: str, branch_name: str, date: str, time: st
     """Tao duong link de khach hang dat ve xem phim. Bat buoc phai co ten rap (branch_name)."""
     maLichChieu, maRap, maPhim, ngayChieu, maPhong, gioChieu = LayMaSuatChieu(None, movie_name, date, time, branch_name)
     if maLichChieu:
-        return f"Day la link dat ghe cho phim <b>{movie_name}</b> suat <b>{time}</b> ngay <b>{date}</b> tai <b>{branch_name}</b>: <a href='http://localhost:3000/datvechitiet/{maLichChieu}/{maRap}/{maPhim}/{ngayChieu}/{maPhong}/{gioChieu}' target='_blank' style='color:#f26b38;font-weight:bold;'>Đặt vé tại đây</a>"
+        # FRONTEND_URL lấy từ .env thay vì hardcode localhost:3000 - nếu không thì link đặt vé sẽ hỏng
+        # khi chatbot chạy ở production (trỏ về localhost của máy chủ thay vì domain thật của FE).
+        return f"Day la link dat ghe cho phim <b>{movie_name}</b> suat <b>{time}</b> ngay <b>{date}</b> tai <b>{branch_name}</b>: <a href='{FRONTEND_URL}/datvechitiet/{maLichChieu}/{maRap}/{maPhim}/{ngayChieu}/{maPhong}/{gioChieu}' target='_blank' style='color:#f26b38;font-weight:bold;'>Đặt vé tại đây</a>"
     return f"Xin loi, suat chieu luc {time} ngay {date} cho phim {movie_name} tai rap {branch_name} da het han hoac khong hop le."
 
 def get_food_items() -> str:
@@ -125,8 +134,21 @@ model = genai.GenerativeModel(
     )
 )
 
-# Quan ly phien chat (session)
-user_sessions = {}
+# Quan ly phien chat (session). Dùng OrderedDict + giới hạn số lượng để tránh phình bộ nhớ vô hạn
+# (trước đây user_sessions là dict thường, không bao giờ bị dọn, mỗi user_id do client tự khai
+# (không xác thực) tạo thêm 1 session mới tồn tại mãi trong RAM cho đến khi restart service).
+MAX_SESSIONS = int(os.getenv("MAX_CHAT_SESSIONS", "1000"))
+user_sessions = OrderedDict()
+
+def _get_or_create_session(user_id):
+    if user_id in user_sessions:
+        user_sessions.move_to_end(user_id)
+        return user_sessions[user_id]
+    if len(user_sessions) >= MAX_SESSIONS:
+        user_sessions.popitem(last=False)  # bỏ session cũ nhất (LRU)
+    session = model.start_chat(enable_automatic_function_calling=True)
+    user_sessions[user_id] = session
+    return session
 
 class MessageRequest(BaseModel):
     message: str
@@ -154,10 +176,7 @@ def handle_message(req: MessageRequest):
     user_id = req.user_id
     user_message = req.message
     
-    if user_id not in user_sessions:
-        user_sessions[user_id] = model.start_chat(enable_automatic_function_calling=True)
-    
-    chat_session = user_sessions[user_id]
+    chat_session = _get_or_create_session(user_id)
     
     response_text = call_gemini_with_retry(chat_session, user_message)
     processing_time = time.time() - start_time

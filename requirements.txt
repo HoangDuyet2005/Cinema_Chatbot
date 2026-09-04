@@ -1,10 +1,5 @@
 fastapi
 uvicorn
-pytest
-httpx
 python-dotenv
-redis
-numpy
-sse-starlette
 mysql-connector-python
 google-generativeai
