@@ -120,7 +120,7 @@ def get_gio_ngay_chieu_theo_chi_nhanh(movie_name):
         JOIN movie p ON lc.movie_id = p.id
         JOIN room r ON lc.room_id = r.id
         JOIN branch b ON r.branch_id = b.id
-        WHERE p.name LIKE %s AND lc.start_date >= CURDATE()
+        WHERE p.name LIKE %s AND TIMESTAMP(lc.start_date, lc.start_time) > NOW()
         ORDER BY b.name, lc.start_date, lc.start_time
         """
         cursor.execute(query, (f"%{movie_name}%",))
@@ -212,7 +212,7 @@ def LayMaSuatChieu(current_context, movie_name, ngay_chieu, gio_chieu, branch_na
             JOIN movie p ON lc.movie_id = p.id
             JOIN room r ON lc.room_id = r.id
             JOIN branch b ON r.branch_id = b.id
-            WHERE (p.name = %s OR p.name LIKE %s) AND lc.start_date = %s AND lc.start_time = %s AND (b.name = %s OR b.name LIKE %s)
+            WHERE (p.name = %s OR p.name LIKE %s) AND lc.start_date = %s AND lc.start_time = %s AND TIMESTAMP(lc.start_date, lc.start_time) > NOW() AND (b.name = %s OR b.name LIKE %s)
             """
             params = (movie_name, f"%{movie_name}%", ngay_chieu_sql, gio_chieu, branch_name, f"%{branch_name}%")
         else:
@@ -222,7 +222,7 @@ def LayMaSuatChieu(current_context, movie_name, ngay_chieu, gio_chieu, branch_na
             JOIN movie p ON lc.movie_id = p.id
             JOIN room r ON lc.room_id = r.id
             JOIN branch b ON r.branch_id = b.id
-            WHERE (p.name = %s OR p.name LIKE %s) AND lc.start_date = %s AND lc.start_time = %s
+            WHERE (p.name = %s OR p.name LIKE %s) AND lc.start_date = %s AND lc.start_time = %s AND TIMESTAMP(lc.start_date, lc.start_time) > NOW()
             LIMIT 1
             """
             params = (movie_name, f"%{movie_name}%", ngay_chieu_sql, gio_chieu)
